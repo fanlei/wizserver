@@ -1,0 +1,37 @@
+# Nginx site for WizServer Lite.
+# Copy to /etc/nginx/sites-available/wiz, replace notes.example.com, then:
+#   sudo ln -sf /etc/nginx/sites-available/wiz /etc/nginx/sites-enabled/wiz
+#   sudo nginx -t && sudo systemctl reload nginx
+#   sudo certbot --nginx -d notes.example.com
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name notes.example.com;
+
+    root /var/www/wizserver/public;
+    index index.php;
+
+    client_max_body_size 200M;
+
+    # Block search engines from indexing anything on this host
+    add_header X-Robots-Tag "noindex, nofollow, nosnippet, noarchive" always;
+
+    location = /robots.txt {
+        default_type text/plain;
+        return 200 "User-agent: *\nDisallow: /\n";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        # Where wizserver.sqlite, notes/ and attachments/ live
+        fastcgi_param WIZ_DATA_DIR /home/deploy/wizdata;
+        fastcgi_read_timeout 300;
+    }
+}

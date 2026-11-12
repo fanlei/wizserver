@@ -1,0 +1,19 @@
+# Local data & SQLite databases (never commit note data or credentials)
+wizdata/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.tar.gz
+*.zip
+
+# Environment / local overrides
+.env
+config/local.*
+
+# OS / Editor files
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.pyc
