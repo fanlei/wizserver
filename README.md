@@ -11,11 +11,13 @@ A small, self-hosted WizNote server written in one PHP file with SQLite.
 ## Layout
 
 ```text
-public/index.php                      Server: sync API + web app (single file)
-scripts/download_missing_from_wizcn.py  Save all attachments from wiz.cn to the local client folder
-scripts/import_from_local.py          Build a wizdata/ folder from a local WizQTClient profile
-scripts/switch_local_client.py        Point local WizQTClient at the private server (or back to wiz.cn)
-config/nginx-wizserver.conf.example   Nginx site template
+public/index.php                         Server: sync API + web app (single file)
+src/schema.sql                           SQLite database schema
+src/cli_common.php                       Shared helpers for CLI scripts
+scripts/download_missing_from_wizcn.php  Save all attachments from wiz.cn to the local client folder
+scripts/import_from_local.php            Build a wizdata/ folder from a local WizQTClient profile
+scripts/switch_local_client.php          Point local WizQTClient at the private server (or back to wiz.cn)
+config/nginx-wizserver.conf.example      Nginx site template
 ```
 
 ## Data folder (`WIZ_DATA_DIR`)
@@ -39,18 +41,21 @@ WizQTClient packs them back into zip files on the desktop side.
 Run these on the computer that has WizQTClient. Replace `<data>` with
 `~/.wiznote/<your-account>/data`. Close WizQTClient first.
 
+Requirements: PHP 8.3 CLI with `pdo_sqlite`, `zip`, `curl`, and `mbstring`
+(on Ubuntu: `sudo apt install -y php8.3-cli php8.3-sqlite3 php8.3-zip php8.3-curl php8.3-mbstring`).
+
 1. Back up the local profile:
    ```bash
    tar -czf ~/wiznote-backup-$(date +%Y%m%d).tar.gz -C ~ .wiznote
    ```
 2. Download all attachments (the client only downloads them on demand):
    ```bash
-   python3 scripts/download_missing_from_wizcn.py <data> --insecure
+   php scripts/download_missing_from_wizcn.php <data> --insecure
    ```
 3. Make sure the client is fully synced with wiz.cn (click Sync once).
 4. Build the server data folder:
    ```bash
-   python3 scripts/import_from_local.py <data> ./wizdata
+   php scripts/import_from_local.php <data> ./wizdata
    ```
    The login password is taken from the local client profile.
 
@@ -97,11 +102,11 @@ sudo chown www-data:www-data /var/www/wizserver/public/index.php
 **Desktop (WizQTClient):** close the app, then
 
 ```bash
-python3 scripts/switch_local_client.py private https://notes.example.com <data>
+php scripts/switch_local_client.php private https://notes.example.com <data>
 ```
 
 Open WizQTClient and click Sync. To go back:
-`python3 scripts/switch_local_client.py wizcn <data>`.
+`php scripts/switch_local_client.php wizcn <data>`.
 
 **Web:** open `https://notes.example.com` and sign in.
 
