@@ -1287,6 +1287,7 @@ header('Content-Type: text/html; charset=utf-8');
     background: var(--bg);
     color: var(--text);
     height: 100vh;
+    height: 100dvh;
     overflow: hidden;
   }
   #login-view {
@@ -1294,6 +1295,7 @@ header('Content-Type: text/html; charset=utf-8');
     align-items: center;
     justify-content: center;
     height: 100vh;
+    height: 100dvh;
   }
   .login-card {
     background: var(--panel);
@@ -1331,10 +1333,35 @@ header('Content-Type: text/html; charset=utf-8');
     background: var(--panel-alt);
     color: var(--text);
   }
+  .mobile-only { display: none; }
+  #sidebar-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 35;
+  }
+  .mobile-list-header {
+    display: none;
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    background: var(--bg);
+  }
+  .mobile-filter-title {
+    font-weight: 600;
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   #app-view {
     display: none;
     grid-template-columns: 250px 330px 1fr;
     height: 100vh;
+    height: 100dvh;
   }
   .sidebar {
     background: var(--bg);
@@ -1531,8 +1558,66 @@ header('Content-Type: text/html; charset=utf-8');
     overflow-y: auto;
   }
   @media (max-width: 900px) {
-    #app-view { grid-template-columns: 1fr; }
-    .sidebar, .note-list-pane { height: auto; max-height: 30vh; }
+    .mobile-only { display: inline-flex; align-items: center; justify-content: center; }
+    #app-view {
+      grid-template-columns: 1fr;
+      position: relative;
+    }
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: min(280px, 82vw);
+      height: 100vh;
+      height: 100dvh;
+      z-index: 40;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+    }
+    #app-view.mobile-nav-open .sidebar {
+      transform: translateX(0);
+    }
+    #app-view.mobile-nav-open #sidebar-backdrop {
+      display: block;
+    }
+    .mobile-list-header {
+      display: flex;
+    }
+    .note-list-pane {
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      border-right: none;
+    }
+    .viewer-pane {
+      display: none;
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+    }
+    #app-view.mobile-note-open .note-list-pane {
+      display: none;
+    }
+    #app-view.mobile-note-open .viewer-pane {
+      display: flex;
+    }
+    .viewer-header {
+      padding: 10px 12px;
+    }
+    .editor-box {
+      width: 100%;
+      height: 100vh;
+      height: 100dvh;
+      max-width: none;
+      border-radius: 0;
+      padding: 12px;
+    }
+    .editor-row {
+      flex-direction: column;
+      gap: 8px;
+    }
   }
 </style>
 </head>
@@ -1556,16 +1641,18 @@ header('Content-Type: text/html; charset=utf-8');
 </div>
 
 <div id="app-view">
+  <div id="sidebar-backdrop" onclick="toggleSidebar(false)"></div>
   <div class="sidebar">
     <div class="sidebar-header">
       <span>WizNote</span>
       <div style="display:flex;gap:6px;">
         <button class="btn" onclick="openEditor(true)">+ New</button>
         <button class="btn btn-secondary" onclick="doLogout()">Exit</button>
+        <button type="button" class="btn btn-secondary mobile-only" onclick="toggleSidebar(false)" aria-label="Close menu">✕</button>
       </div>
     </div>
     <div class="sidebar-scroll">
-      <div class="nav-item active" id="nav-all" onclick="selectFilter('', '')">
+      <div class="nav-item active" id="nav-all" onclick="selectFilter('', '', this, 'All Notes')">
         <span>All Notes</span>
         <span class="nav-count" id="total-count">0</span>
       </div>
@@ -1577,6 +1664,11 @@ header('Content-Type: text/html; charset=utf-8');
   </div>
 
   <div class="note-list-pane">
+    <div class="mobile-list-header">
+      <button type="button" class="btn btn-secondary" onclick="toggleSidebar(true)">☰ Folders</button>
+      <span class="mobile-filter-title" id="mobile-filter-title">All Notes</span>
+      <button type="button" class="btn" onclick="openEditor(true)">+ New</button>
+    </div>
     <div class="search-bar">
       <input type="search" id="search-input" placeholder="Search title or content..." oninput="debounceSearch()">
     </div>
@@ -1585,9 +1677,12 @@ header('Content-Type: text/html; charset=utf-8');
 
   <div class="viewer-pane">
     <div class="viewer-header">
-      <div>
-        <h2 class="viewer-title" id="view-title">Select a note</h2>
-        <div class="viewer-sub" id="view-meta"></div>
+      <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1;">
+        <button type="button" class="btn btn-secondary mobile-only" onclick="closeMobileNote()">← Back</button>
+        <div style="min-width:0;flex:1;">
+          <h2 class="viewer-title" id="view-title" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Select a note</h2>
+          <div class="viewer-sub" id="view-meta"></div>
+        </div>
       </div>
       <div id="view-actions" style="display:none;gap:8px;">
         <button class="btn btn-secondary" onclick="openEditor(false)">Edit</button>
@@ -1679,7 +1774,7 @@ async function initApp() {
     const div = document.createElement('div');
     div.className = 'nav-item';
     div.innerHTML = `<span>${escapeHtml(f.category)}</span><span class="nav-count">${f.cnt}</span>`;
-    div.onclick = () => selectFilter(f.category, '', div);
+    div.onclick = () => selectFilter(f.category, '', div, f.category);
     fl.appendChild(div);
   }
 
@@ -1689,19 +1784,42 @@ async function initApp() {
     const div = document.createElement('div');
     div.className = 'nav-item';
     div.innerHTML = `<span>#${escapeHtml(t.name)}</span><span class="nav-count">${t.cnt}</span>`;
-    div.onclick = () => selectFilter('', t.tag_guid, div);
+    div.onclick = () => selectFilter('', t.tag_guid, div, '#' + t.name);
     tl.appendChild(div);
   }
 
   loadNotes();
 }
 
-function selectFilter(cat, tag, el) {
+function toggleSidebar(open) {
+  const app = document.getElementById('app-view');
+  if (open) app.classList.add('mobile-nav-open');
+  else app.classList.remove('mobile-nav-open');
+}
+
+function closeMobileNote(fromPopState = false) {
+  const app = document.getElementById('app-view');
+  if (!app.classList.contains('mobile-note-open')) return;
+  app.classList.remove('mobile-note-open');
+  if (!fromPopState && history.state && history.state.mobileNote) {
+    history.back();
+  }
+}
+
+window.addEventListener('popstate', () => {
+  closeMobileNote(true);
+});
+
+function selectFilter(cat, tag, el, label) {
   currentCategory = cat;
   currentTag = tag;
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   if (el) el.classList.add('active');
   else document.getElementById('nav-all').classList.add('active');
+  const titleEl = document.getElementById('mobile-filter-title');
+  if (titleEl) titleEl.textContent = label || cat || 'All Notes';
+  toggleSidebar(false);
+  closeMobileNote();
   loadNotes();
 }
 
@@ -1766,6 +1884,14 @@ async function openNote(docGuid, cardEl) {
   }
 
   renderNoteInIframe(docGuid, currentNote.title, currentHtml);
+  toggleSidebar(false);
+  const app = document.getElementById('app-view');
+  if (!app.classList.contains('mobile-note-open')) {
+    app.classList.add('mobile-note-open');
+    if (window.innerWidth <= 900) {
+      history.pushState({mobileNote: docGuid}, '');
+    }
+  }
 }
 
 function renderNoteInIframe(docGuid, title, rawHtml) {
@@ -1796,6 +1922,7 @@ function renderNoteInIframe(docGuid, title, rawHtml) {
 }
 
 function openEditor(isNew) {
+  toggleSidebar(false);
   isNewNote = isNew;
   document.getElementById('editor-modal').style.display = 'flex';
   if (isNew) {
