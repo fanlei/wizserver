@@ -38,7 +38,7 @@ Settings in `.env`:
 | `WIZ_SSH_HOST` | Remote SSH target (`user@ip` or SSH alias) | Uploading files and running deploy commands from your local machine |
 | `WIZ_DATA_DIR` | Folder **on the server** (e.g. `/home/deploy/wizdata`) | Live `wizserver.sqlite`, unpacked `notes/`, and `attachments/` |
 | `WIZ_WEB_ROOT` | Folder **on the server** (e.g. `/var/www/wizserver`) | Where `public/index.php` is served by Nginx |
-| `WIZ_NGINX_SITE` | Nginx site name (default: `wiz`) | `/etc/nginx/sites-available/<name>` |
+| `WIZ_NGINX_SITE` | Nginx site filename (default: `wiz`) | `/etc/nginx/sites-available/<name>` and `sites-enabled/<name>` |
 | `WIZ_LOCAL_DATA` | Folder **on this computer** (e.g. `~/.wiznote/<account>/data`) | Local **WizQTClient** profile for migration and client switching |
 
 All scripts read defaults from `.env`. You can still override them with CLI arguments if needed.
@@ -120,6 +120,8 @@ If you also changed `config/nginx-wizserver.conf.example` and want to update the
 ```bash
 php scripts/deploy.php --nginx
 ```
+
+*(Note: `--nginx` overwrites `/etc/nginx/sites-available/<WIZ_NGINX_SITE>` with the HTTP template, so if Certbot already configured HTTPS on that file, re-run `sudo certbot --nginx -d your-domain` afterwards to re-apply the SSL block.)*
 
 To preview exact commands and the generated Nginx config before running either workflow:
 
