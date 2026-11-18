@@ -11,14 +11,37 @@ A small, self-hosted WizNote server written in one PHP file with SQLite.
 ## Layout
 
 ```text
+.env.example                             Template for your local deployment settings
 public/index.php                         Server: sync API + web app (single file)
 src/schema.sql                           SQLite database schema
-src/cli_common.php                       Shared helpers for CLI scripts
+src/cli_common.php                       Shared helpers and .env loader for CLI scripts
 scripts/download_missing_from_wizcn.php  Save all attachments from wiz.cn to the local client folder
 scripts/import_from_local.php            Build a wizdata/ folder from a local WizQTClient profile
+scripts/deploy.php                       Deploy or update a remote server from your local machine
 scripts/switch_local_client.php          Point local WizQTClient at the private server (or back to wiz.cn)
 config/nginx-wizserver.conf.example      Nginx site template
 ```
+
+## Configuration (`.env`)
+
+Copy `.env.example` to `.env` once and fill in your real values (`.env` is in `.gitignore` and never committed):
+
+```bash
+cp .env.example .env
+```
+
+Settings in `.env`:
+
+| Variable | Where it points | Used for |
+|---|---|---|
+| `WIZ_DOMAIN` | Your domain (without `https://`) | Nginx `server_name` and client switch URL (`https://<WIZ_DOMAIN>`) |
+| `WIZ_SSH_HOST` | Remote SSH target (`user@ip` or SSH alias) | Uploading files and running deploy commands from your local machine |
+| `WIZ_DATA_DIR` | Folder **on the server** (e.g. `/home/deploy/wizdata`) | Live `wizserver.sqlite`, unpacked `notes/`, and `attachments/` |
+| `WIZ_WEB_ROOT` | Folder **on the server** (e.g. `/var/www/wizserver`) | Where `public/index.php` is served by Nginx |
+| `WIZ_NGINX_SITE` | Nginx site name (default: `wiz`) | `/etc/nginx/sites-available/<name>` |
+| `WIZ_LOCAL_DATA` | Folder **on this computer** (e.g. `~/.wiznote/<account>/data`) | Local **WizQTClient** profile for migration and client switching |
+
+All scripts read defaults from `.env`. You can still override them with CLI arguments if needed.
 
 ## Data folder (`WIZ_DATA_DIR`)
 
@@ -36,82 +59,95 @@ WizQTClient packs them back into zip files on the desktop side.
 
 `wizdata/` holds private notes and a password hash. **Never commit it.** It is in `.gitignore`.
 
-## Migrate from wiz.cn
+## Requirements (local computer)
 
-Run these on the computer that has WizQTClient. Replace `<data>` with
-`~/.wiznote/<your-account>/data`. Close WizQTClient first.
+PHP 8.3 CLI with `pdo_sqlite`, `zip`, `curl`, and `mbstring`, plus `rsync` and `ssh`:
 
-Requirements: PHP 8.3 CLI with `pdo_sqlite`, `zip`, `curl`, and `mbstring`
-(on Ubuntu: `sudo apt install -y php8.3-cli php8.3-sqlite3 php8.3-zip php8.3-curl php8.3-mbstring`).
+```bash
+sudo apt install -y php8.3-cli php8.3-sqlite3 php8.3-zip php8.3-curl php8.3-mbstring rsync
+```
 
-1. Back up the local profile:
+---
+
+## Workflow 1: Deploy a new WizServer (fresh VPS)
+
+1. **Install server packages** (once on the new Ubuntu VPS):
    ```bash
+   sudo apt update && sudo apt install -y nginx certbot python3-certbot-nginx php8.3-fpm php8.3-sqlite3 php8.3-zip php8.3-mbstring
+   ```
+2. **Prepare local notes** (close WizQTClient first):
+   ```bash
+   # Back up your local profile first
    tar -czf ~/wiznote-backup-$(date +%Y%m%d).tar.gz -C ~ .wiznote
-   ```
-2. Download all attachments (the client only downloads them on demand):
-   ```bash
-   php scripts/download_missing_from_wizcn.php <data> --insecure
-   ```
-3. Make sure the client is fully synced with wiz.cn (click Sync once).
-4. Build the server data folder:
-   ```bash
-   php scripts/import_from_local.php <data> ./wizdata
-   ```
-   The login password is taken from the local client profile.
 
-## Deploy (Ubuntu + Nginx + PHP 8.3)
+   # Download any attachments that exist only on wiz.cn
+   php scripts/download_missing_from_wizcn.php --insecure
+
+   # Build ./wizdata in this repo (uses WIZ_LOCAL_DATA from .env)
+   php scripts/import_from_local.php
+   ```
+   *(Make sure WizQTClient synced once with `wiz.cn` before running `import_from_local.php`. The login password on your new server is copied from your local profile.)*
+3. **Deploy app, data, and Nginx config** from your local machine:
+   ```bash
+   php scripts/deploy.php --init
+   ```
+   This uploads `public/`, uploads `./wizdata/` to `WIZ_DATA_DIR`, generates `/etc/nginx/sites-available/<WIZ_NGINX_SITE>` from the template, sets `www-data` permissions, and reloads Nginx + PHP-FPM.
+   *(Safety check: `--init` refuses to run if `wizserver.sqlite` already exists on the server unless you pass `--force-data`.)*
+4. **Enable HTTPS** (once on the server):
+   ```bash
+   sudo certbot --nginx -d your-domain
+   ```
+5. **Switch desktop WizQTClient** to your new server (close WizQTClient first):
+   ```bash
+   php scripts/switch_local_client.php private
+   ```
+
+---
+
+## Workflow 2: Update an existing WizServer
+
+After editing `public/index.php` (server API or web UI fixes), run **one command from your local machine**:
 
 ```bash
-# On the server
-sudo apt install -y php8.3-fpm php8.3-sqlite3 php8.3-zip php8.3-mbstring
-
-# From your computer
-rsync -a public/ deploy@SERVER:/tmp/wizserver-public/
-rsync -a wizdata/ deploy@SERVER:/home/deploy/wizdata/
-
-# On the server
-sudo mkdir -p /var/www/wizserver/public
-sudo rsync -a /tmp/wizserver-public/ /var/www/wizserver/public/
-sudo chown -R www-data:www-data /var/www/wizserver
-
-# If the data folder is under /home/deploy, let PHP-FPM reach it
-sudo usermod -aG deploy www-data
-sudo chmod g+x /home/deploy
-sudo chown -R www-data:deploy /home/deploy/wizdata
-sudo chmod -R ug+rwX /home/deploy/wizdata
-sudo systemctl restart php8.3-fpm
-
-# Nginx + HTTPS (edit server_name first)
-sudo cp config/nginx-wizserver.conf.example /etc/nginx/sites-available/wiz
-sudo ln -sf /etc/nginx/sites-available/wiz /etc/nginx/sites-enabled/wiz
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d notes.example.com
+php scripts/deploy.php
 ```
 
-### Update only the server code
+- Updates **only** `<WIZ_WEB_ROOT>/public/index.php` and reloads PHP-FPM.
+- **Never touches `WIZ_DATA_DIR`**, so your live `wizserver.sqlite`, notes, and attachments stay safe.
+
+If you also changed `config/nginx-wizserver.conf.example` and want to update the server's Nginx config:
 
 ```bash
-scp public/index.php deploy@SERVER:~/index.php
-# on the server:
-sudo mv ~/index.php /var/www/wizserver/public/index.php
-sudo chown www-data:www-data /var/www/wizserver/public/index.php
+php scripts/deploy.php --nginx
 ```
+
+To preview exact commands and the generated Nginx config before running either workflow:
+
+```bash
+php scripts/deploy.php --dry-run
+php scripts/deploy.php --init --dry-run
+```
+
+---
 
 ## Connect clients
 
-**Desktop (WizQTClient):** close the app, then
+**Desktop (WizQTClient):** close the app, then:
 
 ```bash
-php scripts/switch_local_client.php private https://notes.example.com <data>
+php scripts/switch_local_client.php private
 ```
 
-Open WizQTClient and click Sync. To go back:
-`php scripts/switch_local_client.php wizcn <data>`.
+Open WizQTClient and click Sync. To switch back to `wiz.cn`:
 
-**Web:** open `https://notes.example.com` and sign in.
+```bash
+php scripts/switch_local_client.php wizcn
+```
+
+**Web:** open `https://<WIZ_DOMAIN>` and sign in.
 
 **Mobile app:** log out, choose "Private / Enterprise server" on the login screen,
-enter the server URL and your account. (Mobile sync is less tested than desktop.)
+enter `https://<WIZ_DOMAIN>` and your account. (Mobile sync is less tested than desktop.)
 
 ## Backup
 

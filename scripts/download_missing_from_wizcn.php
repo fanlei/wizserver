@@ -11,8 +11,9 @@ declare(strict_types=1);
  * so no credentials are stored in this repo.
  *
  * Usage:
- *   php scripts/download_missing_from_wizcn.php ~/.wiznote/<account>/data [--insecure]
+ *   php scripts/download_missing_from_wizcn.php [<data_dir>] [--insecure]
  *
+ *   <data_dir>   Defaults to WIZ_LOCAL_DATA in .env when omitted.
  *   --insecure   Skip TLS certificate checks (some wiz.cn KB servers had expired certs).
  */
 
@@ -23,11 +24,8 @@ const CLIENT_PARAMS = 'clientType=macos&clientVersion=2.8.7&apiVersion=10';
 const PARALLEL = 6;
 
 [$args, $flags] = parseArgs($argv);
-if (count($args) < 1) {
-    fail("Usage: php scripts/download_missing_from_wizcn.php <data_dir> [--insecure]");
-}
 $insecure = isset($flags['insecure']);
-$dataDir = rtrim(expandHome($args[0]), '/');
+$dataDir = resolveLocalDataDir($args[0] ?? null);
 $attDir = $dataDir . '/attachments';
 if (!is_dir($attDir) && !mkdir($attDir, 0775, true)) {
     fail("Cannot create {$attDir}");

@@ -7,8 +7,10 @@ declare(strict_types=1);
  * Close WizQTClient before running this script.
  *
  * Usage:
- *   php scripts/switch_local_client.php private https://notes.example.com ~/.wiznote/<account>/data
- *   php scripts/switch_local_client.php wizcn ~/.wiznote/<account>/data
+ *   php scripts/switch_local_client.php private [<server_url>] [<data_dir>]
+ *   php scripts/switch_local_client.php wizcn [<data_dir>]
+ *
+ * When omitted, <server_url> uses https://<WIZ_DOMAIN> and <data_dir> uses WIZ_LOCAL_DATA from .env.
  *
  * How it works:
  *   WizQTClient keeps server settings in WIZ_META inside <data>/index.db.
@@ -25,8 +27,8 @@ function usage(): never
 {
     fail(
         "Usage:\n"
-        . "  php scripts/switch_local_client.php private <server_url> <data_dir>\n"
-        . "  php scripts/switch_local_client.php wizcn <data_dir>"
+        . "  php scripts/switch_local_client.php private [<server_url>] [<data_dir>]\n"
+        . "  php scripts/switch_local_client.php wizcn [<data_dir>]"
     );
 }
 
@@ -34,14 +36,17 @@ function usage(): never
 $mode = $args[0] ?? '';
 
 if ($mode === 'private') {
-    if (count($args) < 3) {
-        usage();
+    $arg1 = $args[1] ?? null;
+    $arg2 = $args[2] ?? null;
+    // Allow either `private <url> <dir>` or `private <dir>` (reading domain from .env)
+    if ($arg1 !== null && !preg_match('#^https?://#', $arg1) && $arg2 === null) {
+        $serverUrl = resolveServerUrl(null);
+        $dataDir = resolveLocalDataDir($arg1);
+    } else {
+        $serverUrl = resolveServerUrl($arg1);
+        $dataDir = resolveLocalDataDir($arg2);
     }
-    $serverUrl = rtrim($args[1], '/');
-    if (!preg_match('#^https?://#', $serverUrl)) {
-        fail("Server URL must start with http:// or https://");
-    }
-    $db = openClientIndexDb($args[2]);
+    $db = openClientIndexDb($dataDir);
 
     $upsert = $db->prepare("
         INSERT OR REPLACE INTO WIZ_META (META_NAME, META_KEY, META_VALUE, DT_MODIFIED)
@@ -56,10 +61,7 @@ if ($mode === 'private') {
 
     echo "Switched local WizQTClient profile to private server: {$serverUrl}\n";
 } elseif ($mode === 'wizcn') {
-    if (count($args) < 2) {
-        usage();
-    }
-    $db = openClientIndexDb($args[1]);
+    $db = openClientIndexDb(resolveLocalDataDir($args[1] ?? null));
 
     $db->beginTransaction();
     $db->exec("UPDATE WIZ_META SET META_VALUE = '99' WHERE META_NAME = 'QT_WIZNOTE' AND META_KEY = 'SERVERTYPE'");

@@ -13,20 +13,19 @@ declare(strict_types=1);
  * The source profile is only read, never changed.
  *
  * Usage:
- *   php scripts/import_from_local.php ~/.wiznote/<account>/data ./wizdata
+ *   php scripts/import_from_local.php [<local_wiznote_data_dir>] [<output_wizdata_dir>]
+ *
+ * Defaults to WIZ_LOCAL_DATA in .env and ./wizdata in the repo root.
  */
 
 require __DIR__ . '/../src/cli_common.php';
 
 [$args] = parseArgs($argv);
-if (count($args) < 2) {
-    fail("Usage: php scripts/import_from_local.php <local_wiznote_data_dir> <output_wizdata_dir>");
-}
 
 useLocalTimezone();
 
-$srcDir = rtrim(expandHome($args[0]), '/');
-$dstDir = rtrim(expandHome($args[1]), '/');
+$srcDir = resolveLocalDataDir($args[0] ?? null);
+$dstDir = rtrim(expandHome($args[1] ?? (repoRoot() . '/wizdata')), '/');
 $dstNotesDir = $dstDir . '/notes';
 $dstAttDir = $dstDir . '/attachments';
 foreach ([$dstDir, $dstNotesDir, $dstAttDir] as $d) {
